@@ -453,6 +453,9 @@ exports.changePassword = async (req, res, next) => {
 
         // Revoke all sessions except current
         await jwtService.logoutAll(user.id);
+        
+        // Send password changed confirmation email
+        await emailService.sendPasswordChangedEmail(user);
 
         // Issue new tokens for current session
         const deviceInfo = getDeviceInfo(req);

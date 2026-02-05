@@ -3,6 +3,7 @@ const cron = require('node-cron');
 const { User, UserProfile, UserGuardian, UserPrivacySettings, UserNotificationPreferences, AccountDeletionRequest, Session, TokenBlacklist } = require('../model');
 const sequelize = require('../config/db');
 const AvatarService = require('../services/AvatarService');
+const emailService = require('../services/EmailService');
 
 class AccountDeletionJob {
     /**
@@ -52,7 +53,8 @@ class AccountDeletionJob {
 
         try {
             const userId = deletionRequest.user_id;
-            const user = deletionRequest.user;
+            // const user = deletionRequest.user;
+            const user = await User.findByPk(userId);
 
             console.log(`[AccountDeletionJob] Deleting account for user ${userId}...`);
 
@@ -123,13 +125,13 @@ class AccountDeletionJob {
             });
 
             // 4. Mark deletion request as completed
-            await request.complete();
+            await deletionRequest.complete();
             await transaction.commit();
 
             console.log(`[AccountDeletionJob] Successfully deleted account for user ${userId}`);
 
-            // TODO: Send final deletion confirmation email
-            // await emailService.sendAccountDeletedEmail(user.email);
+            // 5. Send final deletion confirmation email
+            await emailService.sendAccountDeletedEmail(user);
 
         } catch (error) {
             await transaction.rollback();
