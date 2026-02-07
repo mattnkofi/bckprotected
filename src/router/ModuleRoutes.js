@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const ModuleController = require('../controller/ModuleController');
-const { authenticate } = require('../middleware/AuthMiddleware');
+const { authenticate, optionalAuth } = require('../middleware/AuthMiddleware');
 const {
     uploadModuleFiles,
     uploadModuleFile,
@@ -33,18 +33,18 @@ router.get('/stats', ModuleController.getStats);
  * Get single module by ID
  * GET /api/modules/:id
  */
-router.get('/:id', ModuleController.getModuleById);
+router.get('/:id', optionalAuth, ModuleController.getModuleById);
 
 // ==================== PROTECTED ROUTES ====================
 // All routes below require authentication
 
 router.use(authenticate);
 
-/**
- * Mark module as completed
- * POST /api/modules/:id/complete
- */
-router.post('/:id/complete', ModuleController.markComplete);
+// /**
+//  * Mark module as completed
+//  * POST /api/modules/:id/complete
+//  */
+// router.post('/:id/complete', ModuleController.markComplete);
 
 // ==================== ADMIN/EDUCATOR ROUTES ====================
 // Routes below require admin or educator role

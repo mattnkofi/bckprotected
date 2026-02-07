@@ -89,6 +89,12 @@ module.exports = (sequelize, DataTypes) => {
         last_login_at: {
             type: DataTypes.DATE,
             allowNull: true
+        },
+        requires_password_change: {
+            type: DataTypes.BOOLEAN,
+            defaultValue: false,
+            allowNull: false,
+            comment: 'Flag to force password change on first login'
         }
     }, {
         timestamps: true,

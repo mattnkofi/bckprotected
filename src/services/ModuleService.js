@@ -1,5 +1,5 @@
 // src/services/ModuleService.js
-const { Module, User } = require('../model');
+const { Module, User, ModuleView } = require('../model'); // Import from the index.js loader
 const FileStorageService = require('./FileStorageService');
 const { Op } = require('sequelize');
 
@@ -20,8 +20,8 @@ class ModuleService {
                 category: data.category || 'general',
                 difficulty_level: data.difficulty_level || 'beginner',
                 age_group: data.age_group,
-                duration_minutes: data.duration_minutes,
-                points: data.points || 0,
+                // duration_minutes: data.duration_minutes,
+                // points: data.points || 0,
                 order: data.order || 0,
                 is_published: data.is_published || false,
                 is_featured: data.is_featured || false,
@@ -156,7 +156,8 @@ class ModuleService {
             // Only update fields that are provided
             const allowedFields = [
                 'title', 'description', 'content', 'type', 'category',
-                'difficulty_level', 'age_group', 'duration_minutes', 'points',
+                'difficulty_level', 'age_group',
+                // 'duration_minutes', 'points',
                 'order', 'is_published', 'is_featured', 'required_modules',
                 'tags', 'metadata'
             ];
@@ -280,7 +281,7 @@ class ModuleService {
             const order = [];
 
             // Apply filters
-            if (filters.type) where.type = filters.type;
+            // if (filters.type) where.type = filters.type;
             if (filters.category) where.category = filters.category;
             if (filters.difficulty_level) where.difficulty_level = filters.difficulty_level;
             if (filters.is_featured !== undefined) where.is_featured = filters.is_featured;
@@ -423,35 +424,63 @@ class ModuleService {
         }
     }
 
+    // /**
+    //  * Increment view count
+    //  */
+    // async incrementViewCount(moduleId) {
+    //     try {
+    //         const module = await Module.findByPk(moduleId);
+    //         if (module) {
+    //             await module.incrementViewCount();
+    //         }
+    //     } catch (error) {
+    //         console.error('ModuleService.incrementViewCount error:', error);
+    //         // Don't throw - this is not critical
+    //     }
+    // }
+
     /**
-     * Increment view count
+     * Increment view count (Unique per user)
      */
-    async incrementViewCount(moduleId) {
+    async incrementViewCount(moduleId, userId) {
+        if (!userId) return; // Don't track views for guests if not required
+
         try {
-            const module = await Module.findByPk(moduleId);
-            if (module) {
-                await module.incrementViewCount();
+            // Check if this user has already viewed this module
+            const existingView = await ModuleView.findOne({
+                where: { module_id: moduleId, user_id: userId }
+            });
+
+            if (!existingView) {
+                // Record the unique view
+                await ModuleView.create({ module_id: moduleId, user_id: userId });
+
+                // Increment the total view count on the Module model
+                const module = await Module.findByPk(moduleId);
+                if (module) {
+                    module.view_count += 1;
+                    await module.save({ fields: ['view_count'], hooks: false });
+                }
             }
         } catch (error) {
             console.error('ModuleService.incrementViewCount error:', error);
-            // Don't throw - this is not critical
         }
     }
 
-    /**
-     * Increment completion count
-     */
-    async incrementCompletionCount(moduleId) {
-        try {
-            const module = await Module.findByPk(moduleId);
-            if (module) {
-                await module.incrementCompletionCount();
-            }
-        } catch (error) {
-            console.error('ModuleService.incrementCompletionCount error:', error);
-            // Don't throw - this is not critical
-        }
-    }
+    // /**
+    //  * Increment completion count
+    //  */
+    // async incrementCompletionCount(moduleId) {
+    //     try {
+    //         const module = await Module.findByPk(moduleId);
+    //         if (module) {
+    //             await module.incrementCompletionCount();
+    //         }
+    //     } catch (error) {
+    //         console.error('ModuleService.incrementCompletionCount error:', error);
+    //         // Don't throw - this is not critical
+    //     }
+    // }
 
     /**
      * Get module statistics
@@ -469,14 +498,14 @@ class ModuleService {
 
             const totalModules = await Module.count({ where: { is_published: true } });
             const totalViews = await Module.sum('view_count', { where: { is_published: true } });
-            const totalCompletions = await Module.sum('completion_count', { where: { is_published: true } });
+            // const totalCompletions = await Module.sum('completion_count', { where: { is_published: true } });
 
             return {
                 success: true,
                 stats: {
                     total_modules: totalModules,
                     total_views: totalViews || 0,
-                    total_completions: totalCompletions || 0,
+                    // total_completions: totalCompletions || 0,
                     by_category: stats
                 }
             };

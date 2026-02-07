@@ -183,12 +183,13 @@ class ModuleController {
     async getModuleById(req, res) {
         try {
             const moduleId = req.params.id;
+            const userId = req.user ? req.user.id : null; // Get user ID from the authenticated request
             const includeUnpublished = req.user && (req.user.role === 'admin' || req.user.role === 'educator');
 
             const result = await ModuleService.getModuleById(moduleId, includeUnpublished);
 
             // Increment view count (non-blocking)
-            ModuleService.incrementViewCount(moduleId).catch(err => {
+            ModuleService.incrementViewCount(moduleId, userId).catch(err => {
                 console.error('Failed to increment view count:', err);
             });
 
@@ -469,34 +470,34 @@ class ModuleController {
         }
     }
 
-    /**
-     * Mark module as completed
-     * POST /api/modules/:id/complete
-     */
-    async markComplete(req, res) {
-        try {
-            const moduleId = req.params.id;
+    // /**
+    //  * Mark module as completed
+    //  * POST /api/modules/:id/complete
+    //  */
+    // async markComplete(req, res) {
+    //     try {
+    //         const moduleId = req.params.id;
 
-            // Increment completion count (non-blocking)
-            ModuleService.incrementCompletionCount(moduleId).catch(err => {
-                console.error('Failed to increment completion count:', err);
-            });
+    //         // Increment completion count (non-blocking)
+    //         ModuleService.incrementCompletionCount(moduleId).catch(err => {
+    //             console.error('Failed to increment completion count:', err);
+    //         });
 
-            // TODO: Track user progress in a separate table
-            // This is just incrementing the counter for now
+    //         // TODO: Track user progress in a separate table
+    //         // This is just incrementing the counter for now
 
-            return res.status(200).json({
-                success: true,
-                message: 'Module marked as complete'
-            });
-        } catch (error) {
-            console.error('ModuleController.markComplete error:', error);
-            return res.status(500).json({
-                success: false,
-                message: 'Failed to mark module as complete'
-            });
-        }
-    }
+    //         return res.status(200).json({
+    //             success: true,
+    //             message: 'Module marked as complete'
+    //         });
+    //     } catch (error) {
+    //         console.error('ModuleController.markComplete error:', error);
+    //         return res.status(500).json({
+    //             success: false,
+    //             message: 'Failed to mark module as complete'
+    //         });
+    //     }
+    // }
 
     /**
      * Get module statistics

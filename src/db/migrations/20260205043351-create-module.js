@@ -25,12 +25,12 @@ module.exports = {
         allowNull: true,
         comment: 'Module text content (HTML or Markdown)'
       },
-      type: {
-        type: Sequelize.ENUM('lesson', 'quiz', 'activity', 'resource', 'assessment'),
-        allowNull: false,
-        defaultValue: 'lesson',
-        comment: 'Type of module'
-      },
+      // type: {
+      //   type: Sequelize.ENUM('lesson', 'quiz', 'activity', 'resource', 'assessment'),
+      //   allowNull: false,
+      //   defaultValue: 'lesson',
+      //   comment: 'Type of module'
+      // },
       category: {
         type: Sequelize.ENUM('gad', 'sexual_health', 'vawc', 'general'),
         allowNull: false,
@@ -73,17 +73,17 @@ module.exports = {
         allowNull: true,
         comment: 'R2 storage key for thumbnail image'
       },
-      duration_minutes: {
-        type: Sequelize.INTEGER,
-        allowNull: true,
-        comment: 'Estimated completion time in minutes'
-      },
-      points: {
-        type: Sequelize.INTEGER,
-        allowNull: false,
-        defaultValue: 0,
-        comment: 'Points awarded for completing this module'
-      },
+      // duration_minutes: {
+      //   type: Sequelize.INTEGER,
+      //   allowNull: true,
+      //   comment: 'Estimated completion time in minutes'
+      // },
+      // points: {
+      //   type: Sequelize.INTEGER,
+      //   allowNull: false,
+      //   defaultValue: 0,
+      //   comment: 'Points awarded for completing this module'
+      // },
       order: {
         type: Sequelize.INTEGER,
         allowNull: false,

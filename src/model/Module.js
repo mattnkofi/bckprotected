@@ -25,17 +25,17 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.TEXT('long'),
             allowNull: true
         },
-        type: {
-            type: DataTypes.ENUM('lesson', 'quiz', 'activity', 'resource', 'assessment'),
-            allowNull: false,
-            defaultValue: 'lesson',
-            validate: {
-                isIn: {
-                    args: [['lesson', 'quiz', 'activity', 'resource', 'assessment']],
-                    msg: 'Invalid module type'
-                }
-            }
-        },
+        // type: {
+        //     type: DataTypes.ENUM('lesson', 'quiz', 'activity', 'resource', 'assessment'),
+        //     allowNull: false,
+        //     defaultValue: 'lesson',
+        //     validate: {
+        //         isIn: {
+        //             args: [['lesson', 'quiz', 'activity', 'resource', 'assessment']],
+        //             msg: 'Invalid module type'
+        //         }
+        //     }
+        // },
         category: {
             type: DataTypes.ENUM('gad', 'sexual_health', 'vawc', 'general'),
             allowNull: false,
@@ -77,21 +77,21 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.STRING(500),
             allowNull: true
         },
-        duration_minutes: {
-            type: DataTypes.INTEGER,
-            allowNull: true,
-            validate: {
-                min: { args: [1], msg: 'Duration must be at least 1 minute' }
-            }
-        },
-        points: {
-            type: DataTypes.INTEGER,
-            allowNull: false,
-            defaultValue: 0,
-            validate: {
-                min: { args: [0], msg: 'Points cannot be negative' }
-            }
-        },
+        // duration_minutes: {
+        //     type: DataTypes.INTEGER,
+        //     allowNull: true,
+        //     validate: {
+        //         min: { args: [1], msg: 'Duration must be at least 1 minute' }
+        //     }
+        // },
+        // points: {
+        //     type: DataTypes.INTEGER,
+        //     allowNull: false,
+        //     defaultValue: 0,
+        //     validate: {
+        //         min: { args: [0], msg: 'Points cannot be negative' }
+        //     }
+        // },
         order: {
             type: DataTypes.INTEGER,
             allowNull: false,

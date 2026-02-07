@@ -390,6 +390,244 @@ class EmailService {
             html: this.getEmailTemplate(content, title),
         });
     }
+
+
+    /**
+     * Send welcome email to newly created facilitator with temporary password
+     */
+    async sendFacilitatorWelcomeEmail(user, tempPassword, options = {}) {
+        const { createdBy, isResend = false } = options;
+
+        const loginUrl = `${process.env.FRONTEND_URL}/facilitator/login`;
+
+        const subject = isResend
+            ? 'Your New Temporary Password - ProtectEd Facilitator Portal'
+            : 'Welcome to ProtectEd - Your Facilitator Account';
+
+        const html =
+            `<!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+                    .content { background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; border-top: none; }
+                    .credentials-box { background: #f8f9fa; border-left: 4px solid #667eea; padding: 15px; margin: 20px 0; border-radius: 4px; }
+                    .password { font-family: 'Courier New', monospace; font-size: 18px; font-weight: bold; color: #667eea; background: white; padding: 10px; border-radius: 4px; display: inline-block; }
+                    .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px; }
+                    .button { display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+                    .footer { text-align: center; color: #666; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0; }
+                    .steps { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }
+                    .step { margin: 15px 0; padding-left: 30px; position: relative; }
+                    .step-number { position: absolute; left: 0; background: #667eea; color: white; width: 24px; height: 24px; border-radius: 50%; text-align: center; line-height: 24px; font-size: 12px; font-weight: bold; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1 style="margin: 0; font-size: 28px;">🎓 ProtectEd Facilitator Portal</h1>
+                        <p style="margin: 10px 0 0 0; opacity: 0.9;">${isResend ? 'New Account Credentials' : 'Welcome to the Team!'}</p>
+                    </div>
+                    
+                    <div class="content">
+                        <p>Hello <strong>${user.name}</strong>,</p>
+                        
+                        ${isResend
+                ? `<p>A new temporary password has been generated for your facilitator account at the request of your administrator.</p>`
+                : `<p>Your facilitator account has been created by <strong>${createdBy}</strong>. You now have access to the ProtectEd platform to manage student learning, track progress, and facilitate educational activities.</p>`
+            }
+
+                        <div class="credentials-box">
+                            <h3 style="margin-top: 0; color: #667eea;">Your Login Credentials</h3>
+                            <p><strong>Email:</strong> ${user.email}</p>
+                            <p><strong>Temporary Password:</strong></p>
+                            <div class="password">${tempPassword}</div>
+                        </div>
+
+                        <div class="warning">
+                            <strong>⚠️ Important Security Notice:</strong>
+                            <p style="margin: 5px 0 0 0;">This is a temporary password. You will be required to change it immediately after your first login. Please keep this information secure and do not share it with anyone.</p>
+                        </div>
+
+                        <div class="steps">
+                            <h3 style="margin-top: 0; color: #333;">Getting Started (3 Easy Steps)</h3>
+                            
+                            <div class="step">
+                                <span class="step-number">1</span>
+                                <strong>Login to the Facilitator Portal</strong>
+                                <p style="margin: 5px 0; color: #666;">Use your email and the temporary password above</p>
+                            </div>
+                            
+                            <div class="step">
+                                <span class="step-number">2</span>
+                                <strong>Create Your New Password</strong>
+                                <p style="margin: 5px 0; color: #666;">Choose a strong, secure password (minimum 8 characters)</p>
+                            </div>
+                            
+                            <div class="step">
+                                <span class="step-number">3</span>
+                                <strong>Complete Your Profile</strong>
+                                <p style="margin: 5px 0; color: #666;">Add your photo and preferences to personalize your experience</p>
+                            </div>
+                        </div>
+
+                        <center>
+                            <a href="${loginUrl}" class="button">Access Facilitator Portal →</a>
+                        </center>
+
+                        <h3 style="color: #667eea; margin-top: 30px;">Your Role & Permissions</h3>
+                        <p>As a <strong>${user.role === 'educator' ? 'Facilitator/Educator' : 'Moderator'}</strong>, you can:</p>
+                        <ul style="color: #666;">
+                            <li>Create and manage learning modules</li>
+                            <li>Track student progress and performance</li>
+                            <li>Generate reports and analytics</li>
+                            <li>Communicate with students and parents</li>
+                            ${user.role === 'moderator' ? '<li>Moderate content and manage users</li>' : ''}
+                        </ul>
+
+                        <h3 style="color: #667eea; margin-top: 30px;">Need Help?</h3>
+                        <p>If you have any questions or need assistance:</p>
+                        <ul style="color: #666;">
+                            <li>📧 Email: <a href="mailto:support@protected.edu">support@protected.edu</a></li>
+                            <li>📚 <a href="${process.env.FRONTEND_URL}/facilitator/help">Facilitator Help Center</a></li>
+                            <li>💬 Contact your administrator: ${createdBy}</li>
+                        </ul>
+                    </div>
+
+                    <div class="footer">
+                        <p><strong>ProtectEd Platform</strong></p>
+                        <p>This email contains sensitive information. Please do not forward it.</p>
+                        <p style="color: #999; margin-top: 10px;">
+                            If you did not expect this email or believe it was sent in error, please contact your administrator immediately.
+                        </p>
+                    </div>
+                </div>
+            </body>
+            </html>`
+            ;
+
+        const text =
+            `Welcome to ProtectEd, ${user.name}!
+
+            ${isResend
+                ? 'A new temporary password has been generated for your account.'
+                : `Your facilitator account has been created by ${createdBy}.`
+            }
+
+            Your Login Credentials:
+            Email: ${user.email}
+            Temporary Password: ${tempPassword}
+
+            ⚠️ IMPORTANT: This is a temporary password. You will be required to change it after your first login.
+
+            Getting Started:
+            1. Login to the Facilitator Portal: ${loginUrl}
+            2. Create your new secure password
+            3. Complete your profile
+
+            Your Role: ${user.role === 'educator' ? 'Facilitator/Educator' : 'Moderator'}
+
+            Need help? Contact support@protected.edu or visit our Help Center.
+
+            This email contains sensitive information. Please do not forward it.`
+            ;
+
+        try {
+            await this.sendEmail({
+                to: user.email,
+                subject,
+                html,
+                text
+            });
+            console.log(`Facilitator welcome email sent to ${user.email}`);
+        } catch (error) {
+            console.error(`Failed to send facilitator welcome email to ${user.email}:`, error);
+            throw error;
+        }
+    };
+
+    /**
+     * Send notification when facilitator completes first login and password change
+     */
+    async sendFacilitatorActivationConfirmation(user) {
+        const subject = 'Account Activated - ProtectEd Facilitator Portal';
+
+        const html =
+            `<!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                    .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+                    .content { background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; border-top: none; }
+                    .success-icon { font-size: 48px; margin: 20px 0; }
+                    .footer { text-align: center; color: #666; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <div class="success-icon">✅</div>
+                        <h1 style="margin: 0; font-size: 28px;">Account Successfully Activated!</h1>
+                    </div>
+                    
+                    <div class="content">
+                        <p>Hello <strong>${user.name}</strong>,</p>
+                        
+                        <p>Great news! Your facilitator account has been successfully activated. Your password has been securely updated, and you now have full access to the ProtectEd platform.</p>
+
+                        <h3 style="color: #10b981;">What's Next?</h3>
+                        <ul style="color: #666;">
+                            <li>Explore your facilitator dashboard</li>
+                            <li>Set up your first learning module</li>
+                            <li>Connect with your students</li>
+                            <li>Customize your notification preferences</li>
+                        </ul>
+
+                        <p style="margin-top: 20px;">If you have any questions, don't hesitate to reach out to our support team.</p>
+                    </div>
+
+                    <div class="footer">
+                        <p><strong>ProtectEd Platform</strong></p>
+                        <p>Building safer digital learning environments</p>
+                    </div>
+                </div>
+            </body>
+            </html>`
+            ;
+
+        const text =
+            `Account Successfully Activated!
+
+            Hello ${user.name},
+
+            Your facilitator account has been successfully activated. Your password has been securely updated, and you now have full access to the ProtectEd platform.
+
+            What's Next?
+            - Explore your facilitator dashboard
+            - Set up your first learning module
+            - Connect with your students
+            - Customize your notification preferences
+
+            If you have any questions, contact our support team.
+
+            ProtectEd Platform`
+            ;
+
+        try {
+            await this.sendEmail({
+                to: user.email,
+                subject,
+                html,
+                text
+            });
+            console.log(`Activation confirmation sent to ${user.email}`);
+        } catch (error) {
+            console.error(`Failed to send activation confirmation to ${user.email}:`, error);
+        }
+    };
 }
 
 module.exports = new EmailService();

@@ -8,6 +8,7 @@ const authRoutes = require('./router/authRoutes');
 const profileRoutes = require('./router/ProfileRoutes');
 const moduleRoutes = require('./router/ModuleRoutes');
 const badgeRoutes = require('./router/badgeRoutes');
+const facilitatorRoutes = require('./router/FacilitatorRoutes');
 
 const app = express();
 
@@ -36,8 +37,8 @@ app.get('/api/v1/health', async (req, res) => {
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', profileRoutes);
 app.use('/api/v1/badges', badgeRoutes);
-app.use('/api/modules', moduleRoutes);
-// app.use('/', authRoutes);
+app.use('/api/modules', moduleRoutes);// app.use('/', authRoutes);
+app.use('/api/v1/facilitators', facilitatorRoutes);
 
 // 404 Handler
 app.use((req, res) => {

@@ -98,10 +98,36 @@ exports.authenticate = async (req, res, next) => {
     }
 };
 
+// /**
+//  * Middleware to require email verification
+//  */
+// exports.requireEmailVerified = (req, res, next) => {
+//     if (!req.user) {
+//         return res.status(401).json({
+//             message: 'Authentication required.'
+//         });
+//     }
+
+//     if (!req.user.email_verified_at) {
+//         return res.status(403).json({
+//             message: 'Please verify your email address to continue.',
+//             code: 'EMAIL_NOT_VERIFIED'
+//         });
+//     }
+
+//     next();
+// };
+
 /**
  * Require email verification
  */
 exports.requireEmailVerified = (req, res, next) => {
+    if (!req.user) {
+        return res.status(401).json({
+            message: 'Authentication required.'
+        });
+    }
+
     if (!req.user || !req.user.hasVerifiedEmail()) {
         return res.status(403).json({
             message: 'Please verify your email before accessing this resource.',
@@ -112,10 +138,36 @@ exports.requireEmailVerified = (req, res, next) => {
     next();
 };
 
+// /**
+//  * Require specific role(s)
+//  */
+// exports.requireRole = (...roles) => {
+//     return (req, res, next) => {
+//         if (!req.user) {
+//             return res.status(401).json({
+//                 message: 'Authentication required.',
+//                 code: 'AUTH_REQUIRED'
+//             });
+//         }
+
+//         if (!roles.includes(req.user.role)) {
+//             return res.status(403).json({
+//                 message: 'Insufficient permissions.',
+//                 code: 'INSUFFICIENT_PERMISSIONS',
+//                 required_role: roles,
+//                 current_role: req.user.role
+//             });
+//         }
+
+//         next();
+//     };
+// };
+
 /**
- * Require specific role(s)
+ * Middleware to require specific role(s)
+ * Usage: requireRole('admin') or requireRole(['admin', 'educator'])
  */
-exports.requireRole = (...roles) => {
+exports.requireRole = (roles) => {
     return (req, res, next) => {
         if (!req.user) {
             return res.status(401).json({
@@ -124,18 +176,20 @@ exports.requireRole = (...roles) => {
             });
         }
 
-        if (!roles.includes(req.user.role)) {
+        const allowedRoles = Array.isArray(roles) ? roles : [roles];
+
+        if (!allowedRoles.includes(req.user.role)) {
             return res.status(403).json({
-                message: 'Insufficient permissions.',
+                message: 'You do not have permission to access this resource.',
                 code: 'INSUFFICIENT_PERMISSIONS',
-                required_role: roles,
+                required_role: allowedRoles.length === 1 ? allowedRoles[0] : allowedRoles,
                 current_role: req.user.role
             });
         }
-
         next();
     };
 };
+
 
 /**
  * Optional authentication (doesn't fail if no token)
@@ -184,6 +238,7 @@ exports.createRateLimiter = (windowMs, max) => {
         legacyHeaders: false
     };
 };
+
 
 // Export device info helper for use in controllers
 exports.getDeviceInfo = getDeviceInfo;

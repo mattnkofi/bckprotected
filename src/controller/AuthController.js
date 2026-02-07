@@ -407,6 +407,73 @@ exports.resendVerification = async (req, res, next) => {
 /**
  * Change password
  */
+// exports.changePassword = async (req, res, next) => {
+//     try {
+//         if (!req.user) {
+//             return res.status(401).json({
+//                 message: 'Authentication required.'
+//             });
+//         }
+
+//         const { current_password, password, password_confirmation } = req.body;
+
+//         // Validation
+//         if (!current_password || !password || !password_confirmation) {
+//             return res.status(422).json({
+//                 message: 'All fields are required.'
+//             });
+//         }
+
+//         if (password !== password_confirmation) {
+//             return res.status(422).json({
+//                 message: 'Passwords do not match.'
+//             });
+//         }
+
+//         if (password.length < 8) {
+//             return res.status(422).json({
+//                 message: 'Password must be at least 8 characters.'
+//             });
+//         }
+
+//         // Get user with password
+//         const user = await User.scope('withPassword').findByPk(req.user.id);
+
+//         // Validate current password
+//         const isValid = await user.validatePassword(current_password);
+//         if (!isValid) {
+//             return res.status(401).json({
+//                 message: 'Current password is incorrect.'
+//             });
+//         }
+
+//         // Update password (will trigger hook to set password_changed_at)
+//         user.password = password;
+//         await user.save();
+
+//         // Revoke all sessions except current
+//         await jwtService.logoutAll(user.id);
+
+//         // Send password changed confirmation email
+//         await emailService.sendPasswordChangedEmail(user);
+
+//         // Issue new tokens for current session
+//         const deviceInfo = getDeviceInfo(req);
+//         const tokens = await jwtService.issueTokens(user, deviceInfo);
+
+//         res.json({
+//             message: 'Password changed successfully. All other sessions have been logged out.',
+//             token: tokens.accessToken,
+//             refresh_token: tokens.refreshToken,
+//             expires_in: tokens.expiresIn
+//         });
+//     } catch (error) {
+//         next(error);
+//     }
+// }
+/**
+ * Change password
+ */
 exports.changePassword = async (req, res, next) => {
     try {
         if (!req.user) {
@@ -417,10 +484,10 @@ exports.changePassword = async (req, res, next) => {
 
         const { current_password, password, password_confirmation } = req.body;
 
-        // Validation
-        if (!current_password || !password || !password_confirmation) {
+        // 1. Basic Validation for NEW password
+        if (!password || !password_confirmation) {
             return res.status(422).json({
-                message: 'All fields are required.'
+                message: 'New password and confirmation are required.'
             });
         }
 
@@ -436,24 +503,37 @@ exports.changePassword = async (req, res, next) => {
             });
         }
 
-        // Get user with password
+        // 2. Get user with password scope
         const user = await User.scope('withPassword').findByPk(req.user.id);
 
-        // Validate current password
-        const isValid = await user.validatePassword(current_password);
-        if (!isValid) {
-            return res.status(401).json({
-                message: 'Current password is incorrect.'
-            });
-        }
+        // 3. Current Password Logic (The Fix)
+        // If the user is NOT forced to change password, we MUST verify the old one.
+        if (!user.requires_password_change) {
+            if (!current_password) {
+                return res.status(422).json({
+                    message: 'Current password is required.'
+                });
+            }
 
-        // Update password (will trigger hook to set password_changed_at)
+            const isValid = await user.validatePassword(current_password);
+            if (!isValid) {
+                return res.status(401).json({
+                    message: 'Current password is incorrect.'
+                });
+            }
+        }
+        // ELSE: If user.requires_password_change is TRUE, we skip the current_password check
+        // because they already proved their identity by logging in with the temp password to get the JWT.
+
+        // 4. Update Password
         user.password = password;
+        user.requires_password_change = false; // 🟢 IMPORTANT: Clear the force-change flag
         await user.save();
 
+        // 5. Security Cleanup
         // Revoke all sessions except current
         await jwtService.logoutAll(user.id);
-        
+
         // Send password changed confirmation email
         await emailService.sendPasswordChangedEmail(user);
 
@@ -462,10 +542,11 @@ exports.changePassword = async (req, res, next) => {
         const tokens = await jwtService.issueTokens(user, deviceInfo);
 
         res.json({
-            message: 'Password changed successfully. All other sessions have been logged out.',
+            message: 'Password changed successfully.',
             token: tokens.accessToken,
             refresh_token: tokens.refreshToken,
-            expires_in: tokens.expiresIn
+            expires_in: tokens.expiresIn,
+            user: user.toJSON() // Return updated user so frontend sees requires_password_change: false
         });
     } catch (error) {
         next(error);

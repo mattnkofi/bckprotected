@@ -43,6 +43,9 @@ const UserPrivacySettings = require('./UserPrivacySettings')(sequelize, Sequeliz
 const UserNotificationPreferences = require('./UserNotificationPreferences')(sequelize, Sequelize.DataTypes);
 const AccountDeletionRequest = require('./AccountDeletionrequest')(sequelize, Sequelize.DataTypes);
 const File = require('./File')(sequelize, Sequelize.DataTypes);
+const Module = require('./Module')(sequelize, Sequelize.DataTypes);
+const ModuleView = require('./ModuleView')(sequelize, Sequelize.DataTypes);
+
 // 2. Add them to the models object so associations can find them
 const models = { 
     User, 
@@ -53,7 +56,9 @@ const models = {
     UserPrivacySettings, 
     UserNotificationPreferences, 
     AccountDeletionRequest,
-    File 
+    File,
+    Module,
+    ModuleView
 };
 
 // 3. Execute associations
