@@ -174,7 +174,7 @@ module.exports = {
     });
 
     // Indexes for performance
-    await queryInterface.addIndex('Modules', ['type']);
+    // await queryInterface.addIndex('Modules', ['type']);
     await queryInterface.addIndex('Modules', ['category']);
     await queryInterface.addIndex('Modules', ['difficulty_level']);
     await queryInterface.addIndex('Modules', ['is_published']);

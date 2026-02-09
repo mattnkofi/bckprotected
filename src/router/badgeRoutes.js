@@ -1,19 +1,33 @@
+// routes/badgeRoutes.js
 const express = require('express');
 const router = express.Router();
-const badgeController = require('../controller/badgeController');
-// Use the middleware you already created
-const upload = require('../middleware/upload'); 
+const badgeController = require('../controllers/badgeController');
+const multer = require('multer');
 
-// GET all badges
+// Configure multer for memory storage
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 5 * 1024 * 1024 // 5MB limit
+    },
+    fileFilter: (req, file, cb) => {
+        // Accept images only
+        if (!file.mimetype.startsWith('image/')) {
+            return cb(new Error('Only image files are allowed'), false);
+        }
+        cb(null, true);
+    }
+});
+
+// Metadata routes
+router.get('/categories', badgeController.getCategories);
+router.get('/rarities', badgeController.getRarities);
+
+// CRUD routes
 router.get('/', badgeController.getAllBadges);
-
-// POST a new badge - 'badge' is the field name for the frontend FormData
-router.post('/', upload.single('badge'), badgeController.createBadge);
-
-// PUT (Update) a badge
-router.put('/:id', upload.single('badge'), badgeController.updateBadge);
-
-// DELETE a badge
+router.get('/:id', badgeController.getBadgeById);
+router.post('/', upload.single('icon'), badgeController.createBadge);
+router.put('/:id', upload.single('icon'), badgeController.updateBadge);
 router.delete('/:id', badgeController.deleteBadge);
 
 module.exports = router;
