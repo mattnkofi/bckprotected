@@ -1,74 +1,36 @@
-// controllers/rewardController.js
-const { Reward, Badge } = require('../model');
+// controllers/RewardController.js
+const { Reward, UserRedemption, User } = require('../model');
 const RewardService = require('../services/RewardService');
 const { Op } = require('sequelize');
 
-/**
- * Reward Controller - HTTP handlers for reward management
- */
 class RewardController {
     /**
-     * GET /api/rewards
-     * Get all rewards
+     * Get all rewards (with optional filters)
+     * GET /api/v1/rewards
      */
     async getAllRewards(req, res) {
         try {
-            const {
-                rewardType,
-                isActive,
-                isRepeatable,
-                search,
-                page = 1,
-                limit = 50,
-                sortBy = 'sortOrder',
-                sortOrder = 'ASC'
-            } = req.query;
+            const { category, is_active, min_points, max_points } = req.query;
 
-            // Build where clause
             const whereClause = {};
 
-            if (rewardType) {
-                whereClause.rewardType = rewardType;
+            if (category) whereClause.category = category;
+            if (is_active !== undefined) whereClause.is_active = is_active === 'true';
+
+            if (min_points || max_points) {
+                whereClause.points_required = {};
+                if (min_points) whereClause.points_required[Op.gte] = parseInt(min_points);
+                if (max_points) whereClause.points_required[Op.lte] = parseInt(max_points);
             }
 
-            if (isActive !== undefined) {
-                whereClause.isActive = isActive === 'true';
-            }
-
-            if (isRepeatable !== undefined) {
-                whereClause.isRepeatable = isRepeatable === 'true';
-            }
-
-            if (search) {
-                whereClause[Op.or] = [
-                    { name: { [Op.like]: `%${search}%` } },
-                    { description: { [Op.like]: `%${search}%` } }
-                ];
-            }
-
-            // Pagination
-            const offset = (parseInt(page) - 1) * parseInt(limit);
-
-            const { count, rows: rewards } = await Reward.findAndCountAll({
+            const rewards = await Reward.findAll({
                 where: whereClause,
-                include: [{
-                    model: Badge,
-                    as: 'badge'
-                }],
-                limit: parseInt(limit),
-                offset: offset,
-                order: [[sortBy, sortOrder.toUpperCase()]]
+                order: [['points_required', 'ASC']]
             });
 
             res.json({
                 success: true,
-                data: rewards.map(r => r.toJSON()),
-                pagination: {
-                    total: count,
-                    page: parseInt(page),
-                    limit: parseInt(limit),
-                    totalPages: Math.ceil(count / parseInt(limit))
-                }
+                data: rewards
             });
         } catch (error) {
             console.error('Get all rewards error:', error);
@@ -81,19 +43,38 @@ class RewardController {
     }
 
     /**
-     * GET /api/rewards/:id
-     * Get reward by ID
+     * Get available rewards for user (with redemption ability check)
+     * GET /api/v1/rewards/available
+     */
+    async getAvailableRewards(req, res) {
+        try {
+            const userId = req.user.id; // From auth middleware
+
+            const rewards = await RewardService.getAvailableRewards(userId);
+
+            res.json({
+                success: true,
+                data: rewards
+            });
+        } catch (error) {
+            console.error('Get available rewards error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to fetch available rewards',
+                message: error.message
+            });
+        }
+    }
+
+    /**
+     * Get single reward by ID
+     * GET /api/v1/rewards/:id
      */
     async getRewardById(req, res) {
         try {
             const { id } = req.params;
 
-            const reward = await Reward.findByPk(id, {
-                include: [{
-                    model: Badge,
-                    as: 'badge'
-                }]
-            });
+            const reward = await Reward.findByPk(id);
 
             if (!reward) {
                 return res.status(404).json({
@@ -104,7 +85,7 @@ class RewardController {
 
             res.json({
                 success: true,
-                data: reward.toJSON()
+                data: reward
             });
         } catch (error) {
             console.error('Get reward by ID error:', error);
@@ -117,86 +98,43 @@ class RewardController {
     }
 
     /**
-     * POST /api/rewards
-     * Create new reward
+     * Create new reward (Admin/Facilitator only)
+     * POST /api/v1/rewards
      */
     async createReward(req, res) {
         try {
             const {
                 name,
                 description,
-                badgeId,
-                rewardType,
-                pointsValue,
-                unlockContent,
-                titleText,
-                requiredScore,
-                requiredLevel,
-                isRepeatable,
-                cooldownDays,
-                isActive,
-                validFrom,
-                validUntil,
-                sortOrder
+                image_url,
+                points_required,
+                stock_quantity,
+                category,
+                is_active = true
             } = req.body;
 
-            // Validate required fields
-            if (!name) {
+            // Validation
+            if (!name || !points_required || stock_quantity === undefined) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Reward name is required'
+                    error: 'Missing required fields: name, points_required, stock_quantity'
                 });
             }
 
-            if (requiredScore === undefined || requiredScore === null) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Required score is required'
-                });
-            }
-
-            // Validate badge exists if provided
-            if (badgeId) {
-                const badge = await Badge.findByPk(badgeId);
-                if (!badge) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'Badge not found'
-                    });
-                }
-            }
-
-            // Create reward
             const reward = await Reward.create({
                 name,
                 description,
-                badgeId,
-                rewardType: rewardType || 'badge',
-                pointsValue,
-                unlockContent,
-                titleText,
-                requiredScore,
-                requiredLevel,
-                isRepeatable: isRepeatable || false,
-                cooldownDays,
-                isActive: isActive !== undefined ? isActive : true,
-                validFrom,
-                validUntil,
-                sortOrder: sortOrder || 0
-            });
-
-            // Fetch with badge data
-            const createdReward = await Reward.findByPk(reward.id, {
-                include: [{
-                    model: Badge,
-                    as: 'badge'
-                }]
+                image_url,
+                points_required: parseInt(points_required),
+                stock_quantity: parseInt(stock_quantity),
+                category,
+                is_active
             });
 
             res.status(201).json({
                 success: true,
                 message: 'Reward created successfully',
-                data: createdReward.toJSON()
+                data: reward
             });
         } catch (error) {
             console.error('Create reward error:', error);
@@ -209,12 +147,13 @@ class RewardController {
     }
 
     /**
-     * PUT /api/rewards/:id
-     * Update reward
+     * Update reward (Admin/Facilitator only)
+     * PUT /api/v1/rewards/:id
      */
     async updateReward(req, res) {
         try {
             const { id } = req.params;
+            const updates = req.body;
 
             const reward = await Reward.findByPk(id);
 
@@ -225,66 +164,29 @@ class RewardController {
                 });
             }
 
-            const {
-                name,
-                description,
-                badgeId,
-                rewardType,
-                pointsValue,
-                unlockContent,
-                titleText,
-                requiredScore,
-                requiredLevel,
-                isRepeatable,
-                cooldownDays,
-                isActive,
-                validFrom,
-                validUntil,
-                sortOrder
-            } = req.body;
-
-            // Validate badge exists if provided
-            if (badgeId !== undefined && badgeId !== null) {
-                const badge = await Badge.findByPk(badgeId);
-                if (!badge) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'Badge not found'
-                    });
-                }
-            }
-
             // Update fields
-            if (name !== undefined) reward.name = name;
-            if (description !== undefined) reward.description = description;
-            if (badgeId !== undefined) reward.badgeId = badgeId;
-            if (rewardType !== undefined) reward.rewardType = rewardType;
-            if (pointsValue !== undefined) reward.pointsValue = pointsValue;
-            if (unlockContent !== undefined) reward.unlockContent = unlockContent;
-            if (titleText !== undefined) reward.titleText = titleText;
-            if (requiredScore !== undefined) reward.requiredScore = requiredScore;
-            if (requiredLevel !== undefined) reward.requiredLevel = requiredLevel;
-            if (isRepeatable !== undefined) reward.isRepeatable = isRepeatable;
-            if (cooldownDays !== undefined) reward.cooldownDays = cooldownDays;
-            if (isActive !== undefined) reward.isActive = isActive;
-            if (validFrom !== undefined) reward.validFrom = validFrom;
-            if (validUntil !== undefined) reward.validUntil = validUntil;
-            if (sortOrder !== undefined) reward.sortOrder = sortOrder;
+            const allowedFields = [
+                'name',
+                'description',
+                'image_url',
+                'points_required',
+                'stock_quantity',
+                'category',
+                'is_active'
+            ];
+
+            allowedFields.forEach(field => {
+                if (updates[field] !== undefined) {
+                    reward[field] = updates[field];
+                }
+            });
 
             await reward.save();
-
-            // Fetch with badge data
-            const updatedReward = await Reward.findByPk(reward.id, {
-                include: [{
-                    model: Badge,
-                    as: 'badge'
-                }]
-            });
 
             res.json({
                 success: true,
                 message: 'Reward updated successfully',
-                data: updatedReward.toJSON()
+                data: reward
             });
         } catch (error) {
             console.error('Update reward error:', error);
@@ -297,8 +199,8 @@ class RewardController {
     }
 
     /**
-     * DELETE /api/rewards/:id
-     * Delete reward
+     * Delete reward (Admin only)
+     * DELETE /api/v1/rewards/:id
      */
     async deleteReward(req, res) {
         try {
@@ -310,6 +212,22 @@ class RewardController {
                 return res.status(404).json({
                     success: false,
                     error: 'Reward not found'
+                });
+            }
+
+            // Check if there are pending redemptions
+            const pendingRedemptions = await UserRedemption.count({
+                where: {
+                    reward_id: id,
+                    status: 'pending'
+                }
+            });
+
+            if (pendingRedemptions > 0) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Cannot delete reward with pending redemptions',
+                    pendingCount: pendingRedemptions
                 });
             }
 
@@ -330,179 +248,216 @@ class RewardController {
     }
 
     /**
-     * POST /api/rewards/check
-     * Check and award rewards for user based on current score
+     * Redeem a reward
+     * POST /api/v1/rewards/:id/redeem
      */
-    async checkRewardsForUser(req, res) {
+    async redeemReward(req, res) {
         try {
-            const { userId, currentScore, userLevel } = req.body;
+            const userId = req.user.id;
+            const { id: rewardId } = req.params;
+            const { quantity = 1, notes } = req.body;
 
-            if (!userId || currentScore === undefined) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'userId and currentScore are required'
-                });
-            }
-
-            const result = await RewardService.checkAndAwardRewards(
+            const result = await RewardService.redeemReward(
                 userId,
-                currentScore,
-                userLevel
+                parseInt(rewardId),
+                parseInt(quantity),
+                notes
             );
 
             res.json({
                 success: true,
-                message: `Awarded ${result.totalNewRewards} new reward(s)`,
+                message: 'Reward redeemed successfully',
                 data: result
             });
         } catch (error) {
-            console.error('Check rewards error:', error);
-            res.status(500).json({
+            console.error('Redeem reward error:', error);
+            res.status(400).json({
                 success: false,
-                error: 'Failed to check rewards',
+                error: 'Failed to redeem reward',
                 message: error.message
             });
         }
     }
 
     /**
-     * GET /api/rewards/user/:userId
-     * Get all rewards for user
+     * Get user's redemption history
+     * GET /api/v1/rewards/my-redemptions
      */
-    async getUserRewards(req, res) {
+    async getMyRedemptions(req, res) {
         try {
-            const { userId } = req.params;
-            const { includeViewed, limit, offset } = req.query;
+            const userId = req.user.id;
+            const { status, limit, offset } = req.query;
 
-            const rewards = await RewardService.getUserRewards(userId, {
-                includeViewed: includeViewed !== 'false',
-                limit: limit ? parseInt(limit) : null,
-                offset: offset ? parseInt(offset) : null
+            const redemptions = await RewardService.getUserRedemptions(userId, {
+                status,
+                limit: limit ? parseInt(limit) : 20,
+                offset: offset ? parseInt(offset) : 0
             });
 
             res.json({
                 success: true,
-                data: rewards,
-                count: rewards.length
+                data: redemptions
             });
         } catch (error) {
-            console.error('Get user rewards error:', error);
+            console.error('Get my redemptions error:', error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to fetch user rewards',
+                error: 'Failed to fetch redemptions',
                 message: error.message
             });
         }
     }
 
     /**
-     * GET /api/rewards/user/:userId/progress
-     * Get user's progress toward all rewards
+     * Get user stats
+     * GET /api/v1/rewards/my-stats
      */
-    async getUserRewardProgress(req, res) {
+    async getMyStats(req, res) {
         try {
-            const { userId } = req.params;
-            const { currentScore, userLevel } = req.query;
+            const userId = req.user.id;
 
-            if (!currentScore) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'currentScore is required'
-                });
-            }
-
-            const progress = await RewardService.getUserRewardProgress(
-                userId,
-                parseInt(currentScore),
-                userLevel ? parseInt(userLevel) : null
-            );
-
-            res.json({
-                success: true,
-                data: progress
-            });
-        } catch (error) {
-            console.error('Get user reward progress error:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to fetch reward progress',
-                message: error.message
-            });
-        }
-    }
-
-    /**
-     * GET /api/rewards/user/:userId/stats
-     * Get reward statistics for user
-     */
-    async getUserRewardStats(req, res) {
-        try {
-            const { userId } = req.params;
-
-            const stats = await RewardService.getUserRewardStats(userId);
+            const stats = await RewardService.getUserStats(userId);
 
             res.json({
                 success: true,
                 data: stats
             });
         } catch (error) {
-            console.error('Get user reward stats error:', error);
+            console.error('Get user stats error:', error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to fetch reward stats',
+                error: 'Failed to fetch stats',
                 message: error.message
             });
         }
     }
 
     /**
-     * PATCH /api/rewards/user/:userId/view/:userRewardId
-     * Mark reward as viewed
+     * Cancel redemption
+     * POST /api/v1/rewards/redemptions/:id/cancel
      */
-    async markRewardViewed(req, res) {
+    async cancelRedemption(req, res) {
         try {
-            const { userId, userRewardId } = req.params;
+            const userId = req.user.id;
+            const { id: redemptionId } = req.params;
 
-            const userReward = await RewardService.markRewardAsViewed(
-                parseInt(userRewardId),
-                parseInt(userId)
+            const result = await RewardService.cancelRedemption(
+                parseInt(redemptionId),
+                userId,
+                false
             );
 
             res.json({
                 success: true,
-                message: 'Reward marked as viewed',
-                data: userReward
+                message: 'Redemption cancelled and points refunded',
+                data: result
             });
         } catch (error) {
-            console.error('Mark reward viewed error:', error);
-            res.status(500).json({
+            console.error('Cancel redemption error:', error);
+            res.status(400).json({
                 success: false,
-                error: 'Failed to mark reward as viewed',
+                error: 'Failed to cancel redemption',
                 message: error.message
             });
         }
     }
 
     /**
-     * PATCH /api/rewards/user/:userId/view-all
-     * Mark all rewards as viewed
+     * Get all redemptions (Admin only)
+     * GET /api/v1/rewards/admin/redemptions
      */
-    async markAllRewardsViewed(req, res) {
+    async getAllRedemptions(req, res) {
         try {
-            const { userId } = req.params;
+            const { status, limit, offset } = req.query;
 
-            const count = await RewardService.markAllRewardsAsViewed(parseInt(userId));
+            const whereClause = {};
+            if (status) whereClause.status = status;
+
+            const redemptions = await UserRedemption.findAll({
+                where: whereClause,
+                include: [
+                    {
+                        model: User,
+                        as: 'user',
+                        attributes: ['id', 'name', 'email']
+                    },
+                    {
+                        model: Reward,
+                        as: 'reward'
+                    }
+                ],
+                order: [['redeemed_at', 'DESC']],
+                limit: limit ? parseInt(limit) : 50,
+                offset: offset ? parseInt(offset) : 0
+            });
 
             res.json({
                 success: true,
-                message: `Marked ${count} reward(s) as viewed`,
-                count
+                data: redemptions
             });
         } catch (error) {
-            console.error('Mark all rewards viewed error:', error);
+            console.error('Get all redemptions error:', error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to mark rewards as viewed',
+                error: 'Failed to fetch redemptions',
+                message: error.message
+            });
+        }
+    }
+
+    /**
+     * Update redemption status (Admin only)
+     * PATCH /api/v1/rewards/admin/redemptions/:id
+     */
+    async updateRedemptionStatus(req, res) {
+        try {
+            const { id } = req.params;
+            const { status, admin_notes } = req.body;
+
+            const redemption = await UserRedemption.findByPk(id, {
+                include: [
+                    { model: User, as: 'user', attributes: ['id', 'name', 'email'] },
+                    { model: Reward, as: 'reward' }
+                ]
+            });
+
+            if (!redemption) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Redemption not found'
+                });
+            }
+
+            if (status) {
+                if (!['pending', 'approved', 'completed', 'cancelled'].includes(status)) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Invalid status'
+                    });
+                }
+                redemption.status = status;
+
+                if (status === 'completed') {
+                    redemption.fulfilled_at = new Date();
+                }
+            }
+
+            if (admin_notes !== undefined) {
+                redemption.admin_notes = admin_notes;
+            }
+
+            await redemption.save();
+
+            res.json({
+                success: true,
+                message: 'Redemption updated successfully',
+                data: redemption
+            });
+        } catch (error) {
+            console.error('Update redemption status error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to update redemption',
                 message: error.message
             });
         }

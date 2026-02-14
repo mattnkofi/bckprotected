@@ -1,21 +1,72 @@
-// routes/rewardRoutes.js
+// backend\src\router\RewardRoutes.js
 const express = require('express');
 const router = express.Router();
-const rewardController = require('../controllers/rewardController');
+const rewardController = require('../controller/RewardController');
+const { authenticate, requireRole } = require('../middleware/AuthMiddleware');
 
-// User reward routes (place BEFORE generic routes to avoid conflicts)
-router.post('/check', rewardController.checkRewardsForUser);
-router.get('/user/:userId', rewardController.getUserRewards);
-router.get('/user/:userId/progress', rewardController.getUserRewardProgress);
-router.get('/user/:userId/stats', rewardController.getUserRewardStats);
-router.patch('/user/:userId/view/:userRewardId', rewardController.markRewardViewed);
-router.patch('/user/:userId/view-all', rewardController.markAllRewardsViewed);
+// ===== PUBLIC/USER ROUTES (require authentication) =====
 
-// Admin reward CRUD routes
+// Get available rewards for user (with ability check)
+router.get('/available', authenticate, rewardController.getAvailableRewards);
+
+// Get user's redemption history
+router.get('/my-redemptions', authenticate, rewardController.getMyRedemptions);
+
+// Get user stats
+router.get('/my-stats', authenticate, rewardController.getMyStats);
+
+// Redeem a reward
+router.post('/:id/redeem', authenticate, rewardController.redeemReward);
+
+// Cancel a redemption
+router.post('/redemptions/:id/cancel', authenticate, rewardController.cancelRedemption);
+
+// ===== ADMIN/FACILITATOR ROUTES =====
+
+// Get all redemptions (admin only)
+router.get(
+    '/admin/redemptions',
+    authenticate,
+    requireRole(['admin', 'educator']),
+    rewardController.getAllRedemptions
+);
+
+// Update redemption status (admin only)
+router.patch(
+    '/admin/redemptions/:id',
+    authenticate,
+    requireRole(['admin', 'educator']),
+    rewardController.updateRedemptionStatus
+);
+
+// CRUD operations for rewards (admin/facilitator only)
+router.post(
+    '/',
+    authenticate,
+    requireRole(['admin', 'educator']),
+    rewardController.createReward
+);
+
+router.put(
+    '/:id',
+    authenticate,
+    requireRole(['admin', 'educator']),
+    rewardController.updateReward
+);
+
+router.delete(
+    '/:id',
+    authenticate,
+    requireRole(['admin']),
+    rewardController.deleteReward
+);
+
+// ===== PUBLIC ROUTES (should be last to avoid conflicts) =====
+
+// Get all rewards (with optional filters)
 router.get('/', rewardController.getAllRewards);
+
+// Get single reward by ID
 router.get('/:id', rewardController.getRewardById);
-router.post('/', rewardController.createReward);
-router.put('/:id', rewardController.updateReward);
-router.delete('/:id', rewardController.deleteReward);
 
 module.exports = router;

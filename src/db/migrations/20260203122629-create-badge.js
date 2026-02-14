@@ -25,14 +25,6 @@ module.exports = {
         allowNull: false,
         comment: 'R2 storage key for the badge icon (e.g., badges/123/icon.png)'
       },
-      iconUrl: {
-        type: Sequelize.VIRTUAL,
-        get() {
-          // This will be constructed dynamically
-          const key = this.getDataValue('iconKey');
-          return key ? `${process.env.R2_PUBLIC_URL}/${key}` : null;
-        }
-      },
       category: {
         type: Sequelize.ENUM('achievement', 'milestone', 'special', 'seasonal', 'quiz', 'learning'),
         defaultValue: 'achievement',

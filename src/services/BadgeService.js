@@ -26,15 +26,32 @@ class BadgeService {
                 throw new Error('Badge icon must be an image file (PNG, JPEG, GIF, WebP)');
             }
 
-            // Use FileStorageService's badge upload method
-            const result = await FileStorageService.uploadBadge(
-                fileBuffer,
-                badgeId,
-                mimetype,
-                originalFilename
+            // Process badge image (preserve transparency, optimize size)
+            const processedImage = await FileStorageService._processBadge(fileBuffer);
+
+            // Generate unique key for badge
+            const key = FileStorageService._generateKey(`badges/${badgeId}`, null, 'png');
+
+            // Upload to R2
+            await FileStorageService._uploadToR2(
+                processedImage,
+                key,
+                'image/png',
+                FileStorageService.config.cacheControl.immutable,
+                {
+                    badgeId: String(badgeId),
+                    originalFilename: originalFilename
+                }
             );
 
-            return result;
+            // Return both key and URL
+            return {
+                key: key,
+                url: FileStorageService._constructUrl(key),
+                size: processedImage.length,
+                uploadedAt: new Date().toISOString()
+            };
+
         } catch (error) {
             console.error('Badge icon upload error:', error);
             throw new Error(`Failed to upload badge icon: ${error.message}`);
@@ -119,71 +136,6 @@ class BadgeService {
         return {
             valid: errors.length === 0,
             errors
-        };
-    }
-
-    /**
-     * Get badge icon URL from key
-     * @param {string} iconKey - R2 storage key
-     * @returns {string} - Public URL
-     */
-    getBadgeIconUrl(iconKey) {
-        if (!iconKey) return null;
-        return FileStorageService.getFileUrl(iconKey);
-    }
-
-    /**
-     * Construct URL with transformations (if using Cloudflare Workers)
-     * @param {string} iconKey - R2 storage key
-     * @param {Object} options - Transformation options
-     * @returns {string} - Transformed URL
-     */
-    getBadgeIconUrlWithTransform(iconKey, options = {}) {
-        if (!iconKey) return null;
-
-        const baseUrl = this.getBadgeIconUrl(iconKey);
-
-        // If using Cloudflare Image Resizing through Workers
-        const {
-            width = null,
-            height = null,
-            quality = null,
-            format = null
-        } = options;
-
-        // Example: Add query parameters for image transformation
-        const params = new URLSearchParams();
-        if (width) params.append('width', width);
-        if (height) params.append('height', height);
-        if (quality) params.append('quality', quality);
-        if (format) params.append('format', format);
-
-        const queryString = params.toString();
-        return queryString ? `${baseUrl}?${queryString}` : baseUrl;
-    }
-
-    /**
-     * Get badge icon variants for different display contexts
-     * @param {string} iconKey - R2 storage key
-     * @returns {Object} - Icon URLs in different sizes
-     */
-    getBadgeIconVariants(iconKey) {
-        if (!iconKey) {
-            return {
-                original: null,
-                large: null,
-                medium: null,
-                small: null,
-                thumbnail: null
-            };
-        }
-
-        return {
-            original: this.getBadgeIconUrl(iconKey),
-            large: this.getBadgeIconUrlWithTransform(iconKey, { width: 400, height: 400 }),
-            medium: this.getBadgeIconUrlWithTransform(iconKey, { width: 200, height: 200 }),
-            small: this.getBadgeIconUrlWithTransform(iconKey, { width: 100, height: 100 }),
-            thumbnail: this.getBadgeIconUrlWithTransform(iconKey, { width: 64, height: 64 })
         };
     }
 

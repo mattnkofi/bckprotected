@@ -1,4 +1,4 @@
-// controllers/badgeController.js
+// backend\src\controller\BadgeController.js
 const { Badge } = require('../model');
 const BadgeService = require('../services/BadgeService');
 const { Op } = require('sequelize');
@@ -35,7 +35,10 @@ class BadgeController {
         whereClause.rarity = rarity;
       }
 
-      if (isActive !== undefined) {
+      // if (isActive !== undefined) {
+      //   whereClause.isActive = isActive === 'true';
+      // }
+      if (isActive !== undefined && isActive !== '') {
         whereClause.isActive = isActive === 'true';
       }
 
@@ -56,12 +59,9 @@ class BadgeController {
         order: [[sortBy, sortOrder.toUpperCase()]]
       });
 
-      // Transform badges to include full URLs
-      const badgesWithUrls = badges.map(badge => badge.toJSON());
-
       res.json({
         success: true,
-        data: badgesWithUrls,
+        data: badges,
         pagination: {
           total: count,
           page: parseInt(page),
@@ -98,7 +98,7 @@ class BadgeController {
 
       res.json({
         success: true,
-        data: badge.toJSON()
+        data: badge
       });
     } catch (error) {
       console.error('Get badge by ID error:', error);
@@ -183,7 +183,7 @@ class BadgeController {
       res.status(201).json({
         success: true,
         message: 'Badge created successfully',
-        data: badge.toJSON()
+        data: badge
       });
     } catch (error) {
       console.error('Create badge error:', error);
@@ -266,7 +266,7 @@ class BadgeController {
       res.json({
         success: true,
         message: 'Badge updated successfully',
-        data: badge.toJSON()
+        data: badge
       });
     } catch (error) {
       console.error('Update badge error:', error);

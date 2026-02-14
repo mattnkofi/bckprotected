@@ -1,231 +1,118 @@
-'use strict';
-const { Model } = require('sequelize');
-
+// models/Reward.js
 module.exports = (sequelize, DataTypes) => {
-    class Reward extends Model {
-        static associate(models) {
-            // A reward belongs to a badge (optional)
-            Reward.belongsTo(models.Badge, {
-                foreignKey: 'badgeId',
-                as: 'badge'
-            });
-
-            // A reward can be earned by many users
-            Reward.belongsToMany(models.User, {
-                through: models.UserReward,
-                foreignKey: 'rewardId',
-                otherKey: 'userId',
-                as: 'users'
-            });
-
-            // Direct access to UserReward records
-            Reward.hasMany(models.UserReward, {
-                foreignKey: 'rewardId',
-                as: 'userRewards'
-            });
-        }
-
-        /**
-         * Check if reward is currently valid (for time-limited rewards)
-         */
-        isCurrentlyValid() {
-            const now = new Date();
-
-            if (this.validFrom && now < this.validFrom) {
-                return false;
-            }
-
-            if (this.validUntil && now > this.validUntil) {
-                return false;
-            }
-
-            return this.isActive;
-        }
-
-        /**
-         * Check if user meets requirements for this reward
-         */
-        async checkEligibility(userId, userScore, userLevel = null) {
-            // Check if active and time-valid
-            if (!this.isCurrentlyValid()) {
-                return {
-                    eligible: false,
-                    reason: 'Reward is not currently available'
-                };
-            }
-
-            // Check score requirement
-            if (userScore < this.requiredScore) {
-                return {
-                    eligible: false,
-                    reason: `Requires ${this.requiredScore} points (you have ${userScore})`,
-                    progress: (userScore / this.requiredScore) * 100
-                };
-            }
-
-            // Check level requirement
-            if (this.requiredLevel && userLevel && userLevel < this.requiredLevel) {
-                return {
-                    eligible: false,
-                    reason: `Requires level ${this.requiredLevel}`
-                };
-            }
-
-            // Check if already earned (for non-repeatable rewards)
-            if (!this.isRepeatable) {
-                const UserReward = sequelize.models.UserReward;
-                const existing = await UserReward.findOne({
-                    where: {
-                        userId: userId,
-                        rewardId: this.id
-                    }
-                });
-
-                if (existing) {
-                    return {
-                        eligible: false,
-                        reason: 'Already earned'
-                    };
-                }
-            } else if (this.cooldownDays) {
-                // Check cooldown for repeatable rewards
-                const UserReward = sequelize.models.UserReward;
-                const lastEarned = await UserReward.findOne({
-                    where: {
-                        userId: userId,
-                        rewardId: this.id
-                    },
-                    order: [['lastEarnedAt', 'DESC']]
-                });
-
-                if (lastEarned && lastEarned.lastEarnedAt) {
-                    const daysSinceEarned = Math.floor(
-                        (Date.now() - lastEarned.lastEarnedAt.getTime()) / (1000 * 60 * 60 * 24)
-                    );
-
-                    if (daysSinceEarned < this.cooldownDays) {
-                        const daysRemaining = this.cooldownDays - daysSinceEarned;
-                        return {
-                            eligible: false,
-                            reason: `Available again in ${daysRemaining} days`
-                        };
-                    }
+    const Reward = sequelize.define('Reward', {
+        id: {
+            type: DataTypes.INTEGER,
+            primaryKey: true,
+            autoIncrement: true
+        },
+        name: {
+            type: DataTypes.STRING(100),
+            allowNull: false,
+            validate: {
+                notEmpty: {
+                    msg: 'Reward name is required'
                 }
             }
+        },
+        description: {
+            type: DataTypes.TEXT,
+            allowNull: true
+        },
+        image_url: {
+            type: DataTypes.STRING(500),
+            allowNull: true
+        },
+        points_required: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            validate: {
+                min: {
+                    args: [0],
+                    msg: 'Points required cannot be negative'
+                }
+            }
+        },
+        stock_quantity: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 0,
+            validate: {
+                min: {
+                    args: [0],
+                    msg: 'Stock quantity cannot be negative'
+                }
+            }
+        },
+        is_active: {
+            type: DataTypes.BOOLEAN,
+            defaultValue: true,
+            allowNull: false
+        },
+        category: {
+            type: DataTypes.STRING(50),
+            allowNull: true
+        }
+    }, {
+        timestamps: true,
+        underscored: true,
+        tableName: 'Rewards'
+    });
 
+    // Associations
+    Reward.associate = function (models) {
+        Reward.hasMany(models.UserRedemption, {
+            foreignKey: 'reward_id',
+            as: 'redemptions'
+        });
+    };
+
+    // Instance methods
+    Reward.prototype.isAvailable = function () {
+        return this.is_active && this.stock_quantity > 0;
+    };
+
+    Reward.prototype.canRedeem = function (userScore, quantity = 1) {
+        if (!this.isAvailable()) {
             return {
-                eligible: true,
-                reason: 'All requirements met'
+                canRedeem: false,
+                reason: 'Reward is not available'
             };
         }
 
-        /**
-         * Serialize for JSON response
-         */
-        toJSON() {
-            const values = { ...this.get() };
-
-            // Include badge data if loaded
-            if (this.badge) {
-                values.badge = this.badge.toJSON();
-            }
-
-            return values;
+        if (this.stock_quantity < quantity) {
+            return {
+                canRedeem: false,
+                reason: `Only ${this.stock_quantity} items left in stock`
+            };
         }
-    }
 
-    Reward.init(
-        {
-            id: {
-                type: DataTypes.INTEGER,
-                primaryKey: true,
-                autoIncrement: true
-            },
-            name: {
-                type: DataTypes.STRING(100),
-                allowNull: false,
-                validate: {
-                    notEmpty: {
-                        msg: 'Reward name is required'
-                    }
-                }
-            },
-            description: {
-                type: DataTypes.TEXT,
-                allowNull: true
-            },
-            badgeId: {
-                type: DataTypes.INTEGER,
-                allowNull: true
-            },
-            rewardType: {
-                type: DataTypes.ENUM('badge', 'points', 'unlock', 'title', 'combo'),
-                allowNull: false,
-                defaultValue: 'badge'
-            },
-            pointsValue: {
-                type: DataTypes.INTEGER,
-                allowNull: true
-            },
-            unlockContent: {
-                type: DataTypes.JSON,
-                allowNull: true
-            },
-            titleText: {
-                type: DataTypes.STRING(100),
-                allowNull: true
-            },
-            requiredScore: {
-                type: DataTypes.INTEGER,
-                allowNull: false,
-                defaultValue: 0,
-                validate: {
-                    min: {
-                        args: [0],
-                        msg: 'Required score cannot be negative'
-                    }
-                }
-            },
-            requiredLevel: {
-                type: DataTypes.INTEGER,
-                allowNull: true
-            },
-            isRepeatable: {
-                type: DataTypes.BOOLEAN,
-                defaultValue: false,
-                allowNull: false
-            },
-            cooldownDays: {
-                type: DataTypes.INTEGER,
-                allowNull: true
-            },
-            isActive: {
-                type: DataTypes.BOOLEAN,
-                defaultValue: true,
-                allowNull: false
-            },
-            validFrom: {
-                type: DataTypes.DATE,
-                allowNull: true
-            },
-            validUntil: {
-                type: DataTypes.DATE,
-                allowNull: true
-            },
-            sortOrder: {
-                type: DataTypes.INTEGER,
-                defaultValue: 0,
-                allowNull: false
-            }
-        },
-        {
-            sequelize,
-            modelName: 'Reward',
-            tableName: 'Rewards',
-            timestamps: true,
-            underscored: false
+        const totalPointsNeeded = this.points_required * quantity;
+        if (userScore < totalPointsNeeded) {
+            return {
+                canRedeem: false,
+                reason: `Need ${totalPointsNeeded} points (you have ${userScore})`,
+                pointsNeeded: totalPointsNeeded - userScore
+            };
         }
-    );
+
+        return { canRedeem: true };
+    };
+
+    Reward.prototype.reduceStock = async function (quantity = 1) {
+        if (this.stock_quantity < quantity) {
+            throw new Error('Insufficient stock');
+        }
+        this.stock_quantity -= quantity;
+        await this.save();
+        return this;
+    };
+
+    Reward.prototype.restoreStock = async function (quantity = 1) {
+        this.stock_quantity += quantity;
+        await this.save();
+        return this;
+    };
 
     return Reward;
 };

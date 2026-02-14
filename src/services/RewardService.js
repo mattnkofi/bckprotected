@@ -1,331 +1,282 @@
 // services/RewardService.js
-const { Reward, UserReward, Badge, User } = require('../model');
+const { Reward, UserRedemption, User } = require('../model');
 const { Op } = require('sequelize');
+const sequelize = require('../model').sequelize;
 
-/**
- * Reward Service - Business logic for reward system
- * 
- * Features:
- * - Check and award rewards based on user score
- * - Manage repeatable rewards with cooldowns
- * - Track reward progress
- * - Handle reward notifications
- */
 class RewardService {
     /**
-     * Check if user has earned any new rewards based on current score
+     * Redeem a reward for a user
      * @param {number} userId - User ID
-     * @param {number} currentScore - User's current score
-     * @param {number} userLevel - User's current level (optional)
-     * @returns {Promise<Object>} - New rewards earned
+     * @param {number} rewardId - Reward ID
+     * @param {number} quantity - Quantity to redeem
+     * @param {string} notes - Optional user notes
+     * @returns {Promise<Object>} - Redemption result
      */
-    async checkAndAwardRewards(userId, currentScore, userLevel = null) {
+    async redeemReward(userId, rewardId, quantity = 1, notes = null) {
+        const transaction = await sequelize.transaction();
+
         try {
-            // Get all active rewards
-            const activeRewards = await Reward.findAll({
-                where: {
-                    isActive: true,
-                    requiredScore: {
-                        [Op.lte]: currentScore // Score requirement met
-                    }
-                },
-                include: [{
-                    model: Badge,
-                    as: 'badge'
-                }],
-                order: [['requiredScore', 'ASC']]
+            // Get user with lock
+            const user = await User.findByPk(userId, {
+                lock: transaction.LOCK.UPDATE,
+                transaction
             });
 
-            const newRewards = [];
-            const eligibilityChecks = [];
-
-            // Check eligibility for each reward
-            for (const reward of activeRewards) {
-                const eligibility = await reward.checkEligibility(userId, currentScore, userLevel);
-
-                if (eligibility.eligible) {
-                    // Award the reward
-                    const userReward = await this._awardReward(userId, reward.id, currentScore);
-                    newRewards.push({
-                        userReward,
-                        reward: reward.toJSON()
-                    });
-                } else {
-                    eligibilityChecks.push({
-                        rewardId: reward.id,
-                        rewardName: reward.name,
-                        eligible: false,
-                        reason: eligibility.reason,
-                        progress: eligibility.progress || null
-                    });
-                }
+            if (!user) {
+                throw new Error('User not found');
             }
+
+            // Get reward with lock
+            const reward = await Reward.findByPk(rewardId, {
+                lock: transaction.LOCK.UPDATE,
+                transaction
+            });
+
+            if (!reward) {
+                throw new Error('Reward not found');
+            }
+
+            // Check if reward can be redeemed
+            const checkResult = reward.canRedeem(user.score, quantity);
+            if (!checkResult.canRedeem) {
+                throw new Error(checkResult.reason);
+            }
+
+            const totalPoints = reward.points_required * quantity;
+
+            // Deduct points from user
+            user.score -= totalPoints;
+            await user.save({ transaction });
+
+            // Reduce stock
+            reward.stock_quantity -= quantity;
+            await reward.save({ transaction });
+
+            // Create redemption record
+            const redemption = await UserRedemption.create({
+                user_id: userId,
+                reward_id: rewardId,
+                points_spent: totalPoints,
+                quantity,
+                notes,
+                status: 'pending',
+                redeemed_at: new Date()
+            }, { transaction });
+
+            await transaction.commit();
+
+            // Return with full details
+            const fullRedemption = await UserRedemption.findByPk(redemption.id, {
+                include: [
+                    {
+                        model: Reward,
+                        as: 'reward'
+                    },
+                    {
+                        model: User,
+                        as: 'user',
+                        attributes: ['id', 'name', 'email', 'score']
+                    }
+                ]
+            });
 
             return {
-                newRewards,
-                totalNewRewards: newRewards.length,
-                eligibilityChecks
+                success: true,
+                redemption: fullRedemption,
+                newScore: user.score,
+                pointsSpent: totalPoints
             };
         } catch (error) {
-            console.error('Check and award rewards error:', error);
+            await transaction.rollback();
             throw error;
         }
     }
 
     /**
-     * Award a specific reward to user
-     * @private
+     * Cancel a redemption and refund points
+     * @param {number} redemptionId - Redemption ID
+     * @param {number} userId - User ID (for verification)
+     * @returns {Promise<Object>} - Cancellation result
      */
-    async _awardReward(userId, rewardId, currentScore) {
+    async cancelRedemption(redemptionId, userId = null, isAdmin = false) {
+        const transaction = await sequelize.transaction();
+
         try {
-            // Check if already earned
-            const existing = await UserReward.findOne({
-                where: { userId, rewardId }
+            const redemption = await UserRedemption.findByPk(redemptionId, {
+                include: [
+                    { model: Reward, as: 'reward' },
+                    { model: User, as: 'user' }
+                ],
+                lock: transaction.LOCK.UPDATE,
+                transaction
             });
 
-            if (existing) {
-                // If repeatable, increment count
-                const reward = await Reward.findByPk(rewardId);
-                if (reward && reward.isRepeatable) {
-                    return await existing.incrementEarnCount();
-                }
-                return existing;
+            if (!redemption) {
+                throw new Error('Redemption not found');
             }
 
-            // Create new user reward
-            const userReward = await UserReward.create({
-                userId,
-                rewardId,
-                earnedAt: new Date(),
-                scoreAtEarn: currentScore,
-                earnedCount: 1,
-                lastEarnedAt: new Date(),
-                isViewed: false
+            // Check ownership unless admin
+            if (!isAdmin && redemption.user_id !== userId) {
+                throw new Error('Unauthorized');
+            }
+
+            // Can only cancel pending redemptions
+            if (redemption.status !== 'pending') {
+                throw new Error(`Cannot cancel ${redemption.status} redemption`);
+            }
+
+            // Refund points
+            const user = await User.findByPk(redemption.user_id, {
+                lock: transaction.LOCK.UPDATE,
+                transaction
             });
 
-            return userReward;
+            user.score += redemption.points_spent;
+            await user.save({ transaction });
+
+            // Restore stock
+            const reward = await Reward.findByPk(redemption.reward_id, {
+                lock: transaction.LOCK.UPDATE,
+                transaction
+            });
+
+            reward.stock_quantity += redemption.quantity;
+            await reward.save({ transaction });
+
+            // Update redemption status
+            redemption.status = 'cancelled';
+            await redemption.save({ transaction });
+
+            await transaction.commit();
+
+            return {
+                success: true,
+                redemption,
+                refundedPoints: redemption.points_spent,
+                newScore: user.score
+            };
         } catch (error) {
-            console.error('Award reward error:', error);
+            await transaction.rollback();
             throw error;
         }
     }
 
     /**
-     * Get all rewards earned by user
+     * Get available rewards for user
+     * @param {number} userId - User ID
+     * @returns {Promise<Array>} - Available rewards with user's ability to redeem
+     */
+    async getAvailableRewards(userId) {
+        try {
+            const user = await User.findByPk(userId, {
+                attributes: ['id', 'score']
+            });
+
+            if (!user) {
+                throw new Error('User not found');
+            }
+
+            const rewards = await Reward.findAll({
+                where: {
+                    is_active: true,
+                    stock_quantity: {
+                        [Op.gt]: 0
+                    }
+                },
+                order: [['points_required', 'ASC']]
+            });
+
+            return rewards.map(reward => {
+                const checkResult = reward.canRedeem(user.score, 1);
+                return {
+                    ...reward.toJSON(),
+                    canRedeem: checkResult.canRedeem,
+                    reason: checkResult.reason || null,
+                    pointsNeeded: checkResult.pointsNeeded || 0,
+                    userScore: user.score
+                };
+            });
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    /**
+     * Get user's redemption history
      * @param {number} userId - User ID
      * @param {Object} options - Query options
-     * @returns {Promise<Array>} - User's rewards
+     * @returns {Promise<Array>} - User's redemptions
      */
-    async getUserRewards(userId, options = {}) {
+    async getUserRedemptions(userId, options = {}) {
         try {
             const {
-                includeViewed = true,
-                limit = null,
-                offset = null
+                status = null,
+                limit = 20,
+                offset = 0
             } = options;
 
-            const whereClause = { userId };
-            if (!includeViewed) {
-                whereClause.isViewed = false;
+            const whereClause = { user_id: userId };
+            if (status) {
+                whereClause.status = status;
             }
 
-            const queryOptions = {
+            const redemptions = await UserRedemption.findAll({
                 where: whereClause,
                 include: [{
                     model: Reward,
-                    as: 'reward',
-                    include: [{
-                        model: Badge,
-                        as: 'badge'
-                    }]
+                    as: 'reward'
                 }],
-                order: [['earnedAt', 'DESC']]
-            };
+                order: [['redeemed_at', 'DESC']],
+                limit,
+                offset
+            });
 
-            if (limit) queryOptions.limit = limit;
-            if (offset) queryOptions.offset = offset;
-
-            const userRewards = await UserReward.findAll(queryOptions);
-
-            return userRewards.map(ur => ur.toJSON());
+            return redemptions;
         } catch (error) {
-            console.error('Get user rewards error:', error);
             throw error;
         }
     }
 
     /**
-     * Get unviewed rewards count for user
+     * Get redemption statistics for user
      * @param {number} userId - User ID
-     * @returns {Promise<number>} - Count of unviewed rewards
+     * @returns {Promise<Object>} - User statistics
      */
-    async getUnviewedRewardsCount(userId) {
+    async getUserStats(userId) {
         try {
-            return await UserReward.count({
-                where: {
-                    userId,
-                    isViewed: false
-                }
-            });
-        } catch (error) {
-            console.error('Get unviewed rewards count error:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Mark reward as viewed
-     * @param {number} userRewardId - UserReward ID
-     * @param {number} userId - User ID (for verification)
-     * @returns {Promise<Object>} - Updated user reward
-     */
-    async markRewardAsViewed(userRewardId, userId) {
-        try {
-            const userReward = await UserReward.findOne({
-                where: {
-                    id: userRewardId,
-                    userId
-                }
+            const user = await User.findByPk(userId, {
+                attributes: ['id', 'name', 'score', 'level']
             });
 
-            if (!userReward) {
-                throw new Error('Reward not found or does not belong to user');
+            if (!user) {
+                throw new Error('User not found');
             }
 
-            return await userReward.markAsViewed();
-        } catch (error) {
-            console.error('Mark reward as viewed error:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Mark all rewards as viewed for user
-     * @param {number} userId - User ID
-     * @returns {Promise<number>} - Number of rewards marked
-     */
-    async markAllRewardsAsViewed(userId) {
-        try {
-            const [updatedCount] = await UserReward.update(
-                {
-                    isViewed: true,
-                    viewedAt: new Date()
-                },
-                {
-                    where: {
-                        userId,
-                        isViewed: false
-                    }
-                }
-            );
-
-            return updatedCount;
-        } catch (error) {
-            console.error('Mark all rewards as viewed error:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Get user's reward progress for available rewards
-     * @param {number} userId - User ID
-     * @param {number} currentScore - User's current score
-     * @param {number} userLevel - User's current level (optional)
-     * @returns {Promise<Array>} - Progress for each reward
-     */
-    async getUserRewardProgress(userId, currentScore, userLevel = null) {
-        try {
-            const activeRewards = await Reward.findAll({
-                where: { isActive: true },
-                include: [{
-                    model: Badge,
-                    as: 'badge'
-                }],
-                order: [['requiredScore', 'ASC']]
+            const totalRedemptions = await UserRedemption.count({
+                where: { user_id: userId }
             });
 
-            const progress = [];
+            const totalPointsSpent = await UserRedemption.sum('points_spent', {
+                where: { user_id: userId }
+            }) || 0;
 
-            for (const reward of activeRewards) {
-                const eligibility = await reward.checkEligibility(userId, currentScore, userLevel);
-
-                const userReward = await UserReward.findOne({
-                    where: { userId, rewardId: reward.id }
-                });
-
-                progress.push({
-                    reward: reward.toJSON(),
-                    earned: !!userReward,
-                    earnedCount: userReward ? userReward.earnedCount : 0,
-                    earnedAt: userReward ? userReward.earnedAt : null,
-                    eligible: eligibility.eligible,
-                    reason: eligibility.reason,
-                    progress: eligibility.progress || this._calculateProgress(currentScore, reward.requiredScore),
-                    scoreNeeded: Math.max(0, reward.requiredScore - currentScore)
-                });
-            }
-
-            return progress;
-        } catch (error) {
-            console.error('Get user reward progress error:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Get reward statistics for user
-     * @param {number} userId - User ID
-     * @returns {Promise<Object>} - Reward statistics
-     */
-    async getUserRewardStats(userId) {
-        try {
-            const totalRewards = await UserReward.count({
-                where: { userId }
-            });
-
-            const unviewedRewards = await UserReward.count({
+            const pendingRedemptions = await UserRedemption.count({
                 where: {
-                    userId,
-                    isViewed: false
+                    user_id: userId,
+                    status: 'pending'
                 }
-            });
-
-            const rewardsByType = await UserReward.findAll({
-                where: { userId },
-                include: [{
-                    model: Reward,
-                    as: 'reward',
-                    attributes: ['rewardType']
-                }],
-                attributes: [],
-                group: ['reward.rewardType'],
-                raw: true
-            });
-
-            const recentRewards = await this.getUserRewards(userId, {
-                limit: 5,
-                includeViewed: true
             });
 
             return {
-                totalRewards,
-                unviewedRewards,
-                rewardsByType,
-                recentRewards
+                user: user.toJSON(),
+                totalRedemptions,
+                totalPointsSpent,
+                pendingRedemptions,
+                currentScore: user.score
             };
         } catch (error) {
-            console.error('Get user reward stats error:', error);
             throw error;
         }
-    }
-
-    /**
-     * Calculate progress percentage
-     * @private
-     */
-    _calculateProgress(currentScore, requiredScore) {
-        if (requiredScore === 0) return 100;
-        return Math.min(100, Math.round((currentScore / requiredScore) * 100));
     }
 }
 

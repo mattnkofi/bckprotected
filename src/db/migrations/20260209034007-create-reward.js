@@ -1,6 +1,11 @@
 'use strict';
 
-/** @type {import('sequelize-cli').Migration} */
+/**
+ * Migration: Create Rewards Table for Redeemable Items
+ * 
+ * This table stores tangible rewards (prizes, items, vouchers) 
+ * that users can redeem using their points
+ */
 module.exports = {
   up: async (queryInterface, Sequelize) => {
     await queryInterface.createTable('Rewards', {
@@ -13,104 +18,56 @@ module.exports = {
       name: {
         type: Sequelize.STRING(100),
         allowNull: false,
-        comment: 'Display name of the reward'
+        comment: 'Name of the reward item (e.g., "Wireless Mouse", "Gift Card")'
       },
       description: {
         type: Sequelize.TEXT,
         allowNull: true,
-        comment: 'What this reward unlocks or provides'
+        comment: 'Description of the reward item'
       },
-      badgeId: {
-        type: Sequelize.INTEGER,
+      image_url: {
+        type: Sequelize.STRING(500),
         allowNull: true,
-        references: {
-          model: 'Badges',
-          key: 'id'
-        },
-        onUpdate: 'CASCADE',
-        onDelete: 'SET NULL',
-        comment: 'Optional badge associated with this reward'
+        comment: 'Image of the reward item'
       },
-      rewardType: {
-        type: Sequelize.ENUM('badge', 'points', 'unlock', 'title', 'combo'),
+      points_required: {
+        type: Sequelize.INTEGER,
         allowNull: false,
-        defaultValue: 'badge',
-        comment: 'Type of reward'
+        comment: 'Points needed to redeem this reward'
       },
-      pointsValue: {
-        type: Sequelize.INTEGER,
-        allowNull: true,
-        comment: 'Points awarded if rewardType includes points'
-      },
-      unlockContent: {
-        type: Sequelize.JSON,
-        allowNull: true,
-        comment: 'JSON data for unlockable content (e.g., {moduleId: 5, lessonId: 10})'
-      },
-      titleText: {
-        type: Sequelize.STRING(100),
-        allowNull: true,
-        comment: 'Title/achievement text if rewardType is title'
-      },
-      requiredScore: {
+      stock_quantity: {
         type: Sequelize.INTEGER,
         allowNull: false,
         defaultValue: 0,
-        comment: 'Minimum score required to earn this reward'
+        comment: 'Available quantity of this reward'
       },
-      requiredLevel: {
-        type: Sequelize.INTEGER,
-        allowNull: true,
-        comment: 'Optional level requirement'
-      },
-      isRepeatable: {
-        type: Sequelize.BOOLEAN,
-        defaultValue: false,
-        allowNull: false,
-        comment: 'Can be earned multiple times'
-      },
-      cooldownDays: {
-        type: Sequelize.INTEGER,
-        allowNull: true,
-        comment: 'Days before can be earned again (for repeatable rewards)'
-      },
-      isActive: {
+      is_active: {
         type: Sequelize.BOOLEAN,
         defaultValue: true,
-        allowNull: false
+        allowNull: false,
+        comment: 'Whether this reward is available for redemption'
       },
-      validFrom: {
-        type: Sequelize.DATE,
+      category: {
+        type: Sequelize.STRING(50),
         allowNull: true,
-        comment: 'Start date for seasonal/limited rewards'
+        comment: 'Category (e.g., "Electronics", "Gift Cards", "Merchandise")'
       },
-      validUntil: {
-        type: Sequelize.DATE,
-        allowNull: true,
-        comment: 'End date for seasonal/limited rewards'
-      },
-      sortOrder: {
-        type: Sequelize.INTEGER,
-        defaultValue: 0,
-        allowNull: false
-      },
-      createdAt: {
+      created_at: {
         type: Sequelize.DATE,
         allowNull: false,
         defaultValue: Sequelize.literal('CURRENT_TIMESTAMP')
       },
-      updatedAt: {
+      updated_at: {
         type: Sequelize.DATE,
         allowNull: false,
         defaultValue: Sequelize.literal('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')
       }
     });
 
-    // Indexes
-    await queryInterface.addIndex('Rewards', ['badgeId']);
-    await queryInterface.addIndex('Rewards', ['requiredScore']);
-    await queryInterface.addIndex('Rewards', ['isActive']);
-    await queryInterface.addIndex('Rewards', ['rewardType']);
+    // Indexes for performance
+    await queryInterface.addIndex('Rewards', ['points_required']);
+    await queryInterface.addIndex('Rewards', ['is_active']);
+    await queryInterface.addIndex('Rewards', ['category']);
   },
 
   down: async (queryInterface) => {

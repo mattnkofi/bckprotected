@@ -45,6 +45,9 @@ const AccountDeletionRequest = require('./AccountDeletionrequest')(sequelize, Se
 const File = require('./File')(sequelize, Sequelize.DataTypes);
 const Module = require('./Module')(sequelize, Sequelize.DataTypes);
 const ModuleView = require('./ModuleView')(sequelize, Sequelize.DataTypes);
+const Badge = require('./Badge')(sequelize, Sequelize.DataTypes);
+const UserRedemption = require('./UserRedemption')(sequelize, Sequelize.DataTypes);
+const Reward = require('./Reward')(sequelize, Sequelize.DataTypes);
 
 // 2. Add them to the models object so associations can find them
 const models = { 
@@ -58,7 +61,10 @@ const models = {
     AccountDeletionRequest,
     File,
     Module,
-    ModuleView
+    ModuleView,
+    Badge,
+    UserRedemption,
+    Reward
 };
 
 // 3. Execute associations

@@ -7,8 +7,11 @@ const sequelize = require('./config/db');
 const authRoutes = require('./router/authRoutes');
 const profileRoutes = require('./router/ProfileRoutes');
 const moduleRoutes = require('./router/ModuleRoutes');
-const badgeRoutes = require('./router/badgeRoutes');
+const badgeRoutes = require('./router/BadgeRoutes');
 const facilitatorRoutes = require('./router/FacilitatorRoutes');
+const userRoutes = require('./router/UserRoutes');
+const rewardRoutes = require('./router/RewardRoutes');
+
 
 const app = express();
 
@@ -36,9 +39,11 @@ app.get('/api/v1/health', async (req, res) => {
 // Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', profileRoutes);
-app.use('/api/v1/badges', badgeRoutes);
+app.use('/api/v1/user', userRoutes);
 app.use('/api/modules', moduleRoutes);// app.use('/', authRoutes);
 app.use('/api/v1/facilitators', facilitatorRoutes);
+app.use('/api/v1/badges', badgeRoutes);
+app.use('/api/v1/rewards', rewardRoutes);
 
 // 404 Handler
 app.use((req, res) => {

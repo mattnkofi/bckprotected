@@ -1,7 +1,7 @@
-// routes/badgeRoutes.js
+// backend\src\router\BadgeRoutes.js
 const express = require('express');
 const router = express.Router();
-const badgeController = require('../controllers/badgeController');
+const badgeController = require('../controller/BadgeController');
 const multer = require('multer');
 
 // Configure multer for memory storage

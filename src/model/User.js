@@ -95,6 +95,44 @@ module.exports = (sequelize, DataTypes) => {
             defaultValue: false,
             allowNull: false,
             comment: 'Flag to force password change on first login'
+        },
+
+        // ===== GAMIFICATION FIELDS =====
+        score: {
+            type: DataTypes.INTEGER,
+            defaultValue: 0,
+            allowNull: false,
+            validate: {
+                min: {
+                    args: [0],
+                    msg: 'Score cannot be negative'
+                }
+            },
+            comment: 'Total points earned for reward system'
+        },
+        level: {
+            type: DataTypes.INTEGER,
+            defaultValue: 1,
+            allowNull: false,
+            validate: {
+                min: {
+                    args: [1],
+                    msg: 'Level must be at least 1'
+                }
+            },
+            comment: 'User level for gamification'
+        },
+        experience_points: {
+            type: DataTypes.INTEGER,
+            defaultValue: 0,
+            allowNull: false,
+            validate: {
+                min: {
+                    args: [0],
+                    msg: 'Experience points cannot be negative'
+                }
+            },
+            comment: 'Experience points for level progression'
         }
     }, {
         timestamps: true,
@@ -167,6 +205,22 @@ module.exports = (sequelize, DataTypes) => {
         User.hasOne(models.AccountDeletionRequest, {
             foreignKey: 'user_id',
             as: 'deletionRequest',
+            onDelete: 'CASCADE'
+        });
+
+        // ===== REWARD SYSTEM ASSOCIATIONS =====
+        // User can earn many rewards
+        User.belongsToMany(models.Reward, {
+            through: models.UserRedemption, // <--- WAS models.UserReward
+            foreignKey: 'user_id',          // <--- WAS 'userId'
+            otherKey: 'reward_id',          // <--- WAS 'rewardId'
+            as: 'rewards'
+        });
+
+        // 3. Update the direct association
+        User.hasMany(models.UserRedemption, { // <--- WAS models.UserReward
+            foreignKey: 'user_id',            // <--- WAS 'userId'
+            as: 'redemptions',                // Renamed from 'earnedRewards' for clarity
             onDelete: 'CASCADE'
         });
     };
